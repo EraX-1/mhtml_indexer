@@ -183,7 +183,9 @@ export class MhtmlBlobIndexer {
           
           if (fetchError instanceof Error && fetchError.name === 'AbortError') {
             this.consecutiveTimeouts++;
-            console.log(`⏰ タイムアウト発生 (連続${this.consecutiveTimeouts}回): ${blobName} - 試行 ${attempt}/${maxRetries}`);
+            console.error(`⏰ タイムアウト発生 (連続${this.consecutiveTimeouts}回): ${blobName} - 試行 ${attempt}/${maxRetries}`);
+            console.error(`   エンドポイント: ${this.indexEndpoint}`);
+            console.error(`   タイムアウト時間: ${timeoutMs}ms`);
             
             if (this.consecutiveTimeouts >= this.MAX_CONSECUTIVE_TIMEOUTS) {
               console.error(`🚨 連続タイムアウト上限到達 (${this.MAX_CONSECUTIVE_TIMEOUTS}回) - 処理を強制終了します`);
@@ -196,7 +198,11 @@ export class MhtmlBlobIndexer {
               continue;
             }
           } else {
-            console.error(`🌐 ネットワークエラー: ${blobName} - ${fetchError instanceof Error ? fetchError.message : fetchError}`);
+            console.error(`🌐 ネットワークエラー: ${blobName}`);
+            console.error(`   エラータイプ: ${fetchError instanceof Error ? fetchError.constructor.name : 'Unknown'}`);
+            console.error(`   エラーメッセージ: ${fetchError instanceof Error ? fetchError.message : fetchError}`);
+            console.error(`   スタック: ${fetchError instanceof Error && fetchError.stack ? fetchError.stack : 'なし'}`);
+            console.error(`   エンドポイント: ${this.indexEndpoint}`);
             if (attempt < maxRetries) {
               console.log(`🔄 ${1000 * attempt}ms後にリトライします...`);
               await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -205,7 +211,10 @@ export class MhtmlBlobIndexer {
           }
         }
       } catch (error) {
-        console.error(`💥 インデックス送信エラー: ${blobName} (試行 ${attempt}/${maxRetries}):`, error);
+        console.error(`💥 インデックス送信エラー: ${blobName} (試行 ${attempt}/${maxRetries})`);
+        console.error(`   エラータイプ: ${error instanceof Error ? error.constructor.name : 'Unknown'}`);
+        console.error(`   エラーメッセージ: ${error instanceof Error ? error.message : error}`);
+        console.error(`   詳細:`, error);
         
         if (attempt < maxRetries) {
           console.log(`🔄 ${1000 * attempt}ms後にリトライします...`);
@@ -240,7 +249,7 @@ export class MhtmlBlobIndexer {
     results: IndexingResult[];
   }> {
     const containerName = source === 'qast' ? 'qast-mhtml' : 'stock-mhtml';
-    const blobPrefix = source === 'qast' ? 'qast-mhtml/data' : 'stock-mhtml/data';
+    const blobPrefix = source === 'qast' ? 'data/' : 'stock-mhtml/data/';
     
     const {
       concurrency = parseInt(process.env.CONCURRENCY || '3'),
@@ -302,11 +311,7 @@ export class MhtmlBlobIndexer {
         
         const batchPromises = batch.map(async (blobName, index) => {
           try {
-            // API間隔のための待機時間
-            if (index > 0) {
-              console.log(`⏳ API間隔待機: ${delayMs}ms (${blobName})`);
-              await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
+            // API間隔のための待機時間は削除（blobダウンロード間隔は不要）
             
             // ファイルをダウンロード
             console.log(`📥 Blobダウンロード開始: ${blobName}`);
@@ -317,6 +322,17 @@ export class MhtmlBlobIndexer {
             
             // MHTMLファイルからContent-Location URLを抽出
             let sourceUrl = this.extractContentLocationUrl(fileBuffer);
+            
+            // Content-Locationに"error"が含まれていた場合はスキップ
+            if (sourceUrl === 'SKIP_DUE_TO_ERROR') {
+              console.log(`⏭️  ${blobName}: Content-Locationにerrorが含まれているためスキップしました`);
+              return {
+                success: false,
+                blobName,
+                source,
+                error: 'Content-Locationにerrorが含まれているためスキップしました'
+              };
+            }
             
             // Content-Locationが見つからない場合は、ファイル名から推測（フォールバック）
             if (!sourceUrl) {
@@ -353,12 +369,7 @@ export class MhtmlBlobIndexer {
           }
         });
         
-        // バッチ間の待機時間
-        if (i + concurrency < allBlobs.length) {
-          const batchDelayMs = 500;
-          console.log(`⏳ バッチ間待機: ${batchDelayMs}ms`);
-          await new Promise(resolve => setTimeout(resolve, batchDelayMs));
-        }
+        // バッチ間の待機時間も削除
       }
 
       // 結果レポート
@@ -463,6 +474,7 @@ export class MhtmlBlobIndexer {
 
   /**
    * MHTMLファイルからContent-LocationのURLを抽出
+   * "error"が含まれている場合はundefinedを返す（スキップフラグ）
    */
   private extractContentLocationUrl(mhtmlContent: Buffer): string | undefined {
     try {
@@ -473,6 +485,13 @@ export class MhtmlBlobIndexer {
       
       if (contentLocationMatch) {
         const url = contentLocationMatch[1].trim();
+        
+        // Content-Locationに"error"が含まれているかチェック
+        if (url.toLowerCase().includes('error')) {
+          console.log(`⚠️  Content-Locationに"error"が含まれています: ${url} - スキップします`);
+          return 'SKIP_DUE_TO_ERROR';
+        }
+        
         console.log(`📍 Content-Location URL found: ${url}`);
         return url;
       }

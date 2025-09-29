@@ -1,4 +1,4 @@
-import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
+import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
@@ -35,13 +35,10 @@ export class AzureBlobDownloader {
       this.blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
     } else if (accountName && accountKey) {
       console.log('🔑 Account Name + Key方式で接続中...');
-      const credential = {
-        accountName,
-        accountKey
-      };
+      const credential = new StorageSharedKeyCredential(accountName, accountKey);
       this.blobServiceClient = new BlobServiceClient(
         `https://${accountName}.blob.core.windows.net`,
-        credential as any
+        credential
       );
     } else {
       throw new Error(

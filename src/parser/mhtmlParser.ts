@@ -15,7 +15,12 @@ export class MhtmlParser {
    * MHTMLファイルからコンテンツを抽出
    */
   static parse(mhtmlContent: string | Buffer): MhtmlContent {
-    const contentStr = mhtmlContent instanceof Buffer ? mhtmlContent.toString('utf-8') : mhtmlContent;
+    let contentStr: string;
+    if (mhtmlContent instanceof Buffer) {
+      contentStr = mhtmlContent.toString('utf-8');
+    } else {
+      contentStr = mhtmlContent as string;
+    }
     
     // MHTMLヘッダーとコンテンツの境界を見つける
     const boundaryMatch = contentStr.match(/boundary="?([^"\s]+)"?/i);
@@ -109,7 +114,12 @@ export class MhtmlParser {
    * MHTMLコンテンツの検証
    */
   static isValidMhtml(content: string | Buffer): boolean {
-    const contentStr = content instanceof Buffer ? content.toString('utf-8') : content;
+    let contentStr: string;
+    if (content instanceof Buffer) {
+      contentStr = content.toString('utf-8');
+    } else {
+      contentStr = content as string;
+    }
     
     // 基本的なMHTMLの特徴をチェック
     const hasMimeVersion = /MIME-Version:/i.test(contentStr);

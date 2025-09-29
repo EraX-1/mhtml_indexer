@@ -26,11 +26,9 @@ export interface IndexResponse {
 export class RagIndexer {
   private client: AxiosInstance;
   private apiEndpoint: string;
-  private apiKey?: string;
   
   constructor() {
     this.apiEndpoint = process.env.RAG_API_ENDPOINT || '';
-    this.apiKey = process.env.RAG_API_KEY;
     
     if (!this.apiEndpoint) {
       throw new Error('RAG_API_ENDPOINT環境変数が設定されていません');
@@ -41,8 +39,7 @@ export class RagIndexer {
       baseURL: this.apiEndpoint,
       timeout: 60000, // 60秒タイムアウト
       headers: {
-        'Content-Type': 'application/json',
-        ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
+        'Content-Type': 'application/json'
       }
     });
     
@@ -136,13 +133,12 @@ export class RagIndexer {
     results: IndexResponse[];
   }> {
     const { 
-      batchSize = parseInt(process.env.BATCH_SIZE || '10'), 
-      delayMs = 1000,
-      maxRetries = parseInt(process.env.MAX_RETRIES || '3')
+      batchSize = 10, 
+      delayMs = 1000
     } = options;
     
     console.log(`📦 バッチインデックス開始: ${requests.length}件のドキュメント`);
-    console.log(`⚙️  設定: バッチサイズ=${batchSize}, 遅延=${delayMs}ms, リトライ=${maxRetries}`);
+    console.log(`⚙️  設定: バッチサイズ=${batchSize}, 遅延=${delayMs}ms`);
     
     const results: IndexResponse[] = [];
     let successCount = 0;
@@ -156,35 +152,13 @@ export class RagIndexer {
       
       console.log(`\n📦 バッチ ${batchNumber}/${totalBatches}: ${batch.length}件処理中...`);
       
-      // バッチ内の各リクエストを並列処理
-      const batchPromises = batch.map(async (request) => {
-        let retryCount = 0;
-        let lastError: string = '';
-        
-        while (retryCount <= maxRetries) {
-          if (retryCount > 0) {
-            console.log(`🔄 リトライ ${retryCount}/${maxRetries}: ${request.id}`);
-            await new Promise(resolve => setTimeout(resolve, retryCount * 1000));
-          }
-          
-          const result = await this.indexDocument(request);
-          
-          if (result.success) {
-            return result;
-          }
-          
-          lastError = result.error || 'Unknown error';
-          retryCount++;
-        }
-        
-        return {
-          success: false,
-          id: request.id,
-          error: `リトライ上限到達: ${lastError}`
-        };
-      });
+      // バッチ内の各リクエストを順次処理（1件ずつ）
+      const batchResults: IndexResponse[] = [];
       
-      const batchResults = await Promise.all(batchPromises);
+      for (const request of batch) {
+        const result = await this.indexDocument(request);
+        batchResults.push(result);
+      }
       
       // 結果を集計
       batchResults.forEach(result => {

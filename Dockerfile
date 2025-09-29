@@ -1,5 +1,8 @@
 # MHTML Indexer Container for Azure Container Instances
-FROM node:20-alpine AS builder
+# Multi-architecture build support (ARM64/AMD64)
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 WORKDIR /app
 
@@ -18,7 +21,12 @@ COPY src ./src
 RUN npm run build
 
 # 実行用の軽量イメージ
-FROM node:20-alpine
+FROM --platform=$TARGETPLATFORM node:20-alpine
+
+# タイムゾーンをJSTに設定し、時刻同期を確保
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime && \
+    echo "Asia/Tokyo" > /etc/timezone
 
 WORKDIR /app
 
@@ -37,9 +45,6 @@ ENV DELAY_MS=500
 ENV TIMEOUT_MS=30000
 ENV MAX_RETRIES=3
 ENV MAX_CONSECUTIVE_TIMEOUTS=10
-
-# 非rootユーザーで実行
-USER node
 
 # アプリケーションを起動
 CMD ["node", "dist/index.js"]
