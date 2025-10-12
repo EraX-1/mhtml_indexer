@@ -1,8 +1,5 @@
 # MHTML Indexer Container for Azure Container Instances
-# Multi-architecture build support (ARM64/AMD64)
-FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -21,7 +18,7 @@ COPY src ./src
 RUN npm run build
 
 # 実行用の軽量イメージ
-FROM --platform=$TARGETPLATFORM node:20-alpine
+FROM node:20-alpine
 
 # タイムゾーンをJSTに設定し、時刻同期を確保
 RUN apk add --no-cache tzdata && \

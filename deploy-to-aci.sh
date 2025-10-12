@@ -3,16 +3,16 @@
 # MHTML Indexer - Azure Container Instances へのデプロイスクリプト
 
 # 設定変数
-ACR_NAME="qastregistry"  # qast-scraperとstock-scraperと同じレジストリを使用
-RESOURCE_GROUP="yuyama"  # リソースグループ名
+ACR_NAME="yuyamaragchatbotregistry"  # RAGChatbotのACRを使用
+RESOURCE_GROUP="RAGChatbot"  # リソースグループ名
 CONTAINER_NAME="mhtml-indexer"
 IMAGE_NAME="mhtml-indexer"
 IMAGE_TAG="latest"
-LOCATION="japaneast"  # 東日本リージョン
+LOCATION="japanwest"  # 西日本リージョン
 
 # Log Analytics ワークスペースの設定
-LOG_ANALYTICS_WORKSPACE="yuyama-batch-logs"  # Log Analytics ワークスペース名
-LOG_ANALYTICS_RESOURCE_GROUP="yuyama"  # Log Analytics のリソースグループ
+LOG_ANALYTICS_WORKSPACE="rag-chatbot-logs"  # Log Analytics ワークスペース名
+LOG_ANALYTICS_RESOURCE_GROUP="RAGChatbot"  # Log Analytics のリソースグループ
 
 # ACR の完全な URL を取得
 ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer -o tsv)
@@ -69,31 +69,31 @@ az container create \
     --registry-username $ACR_USERNAME \
     --registry-password $ACR_PASSWORD \
     --restart-policy Never \
-    --cpu 2 \
-    --memory 4 \
+    --cpu 1 \
+    --memory 2 \
     --location $LOCATION \
     --log-analytics-workspace $WORKSPACE_ID \
     --log-analytics-workspace-key $WORKSPACE_KEY \
+    --secure-environment-variables \
+        AZURE_STORAGE_CONNECTION_STRING="$AZURE_STORAGE_CONNECTION_STRING" \
     --environment-variables \
         NODE_ENV=production \
         TARGET_SOURCE=$TARGET_SOURCE \
-        CONCURRENCY=3 \
-        DELAY_MS=500 \
-        TIMEOUT_MS=30000 \
-        MAX_RETRIES=3 \
-        MAX_CONSECUTIVE_TIMEOUTS=10 \
-        RAG_API_ENDPOINT="${RAG_API_ENDPOINT:-https://yuyama-rag-chatbot-api-cus.azurewebsites.net/reindex-from-blob}" \
-        AZURE_STORAGE_CONNECTION_STRING="$AZURE_STORAGE_CONNECTION_STRING" \
-        AZURE_STORAGE_ACCOUNT_NAME="$AZURE_STORAGE_ACCOUNT_NAME" \
-        AZURE_STORAGE_ACCOUNT_KEY="$AZURE_STORAGE_ACCOUNT_KEY"
+        CONCURRENCY=2 \
+        DELAY_MS=1000 \
+        TIMEOUT_MS=120000 \
+        MAX_RETRIES=5 \
+        MAX_CONSECUTIVE_TIMEOUTS=20 \
+        RAG_API_ENDPOINT="${RAG_API_ENDPOINT:-https://yuyama-rag-chatbot-api.azurewebsites.net/reindex-from-blob}" \
+        AZURE_STORAGE_ACCOUNT_NAME=yuyamaragchatbotstorage
 
 echo "✅ Container Instance のデプロイが完了しました！"
 echo ""
 echo "📊 コンテナ情報:"
 echo "   コンテナ名: $CONTAINER_NAME"
 echo "   リソースグループ: $RESOURCE_GROUP"
-echo "   CPU: 2 vCPU"
-echo "   メモリ: 4GB"
+echo "   CPU: 1 vCPU"
+echo "   メモリ: 2GB"
 echo "   対象: $TARGET_SOURCE MHTMLファイル"
 echo ""
 echo "🔍 監視コマンド:"

@@ -20,7 +20,7 @@ export class MhtmlBlobIndexer {
   private readonly MAX_CONSECUTIVE_TIMEOUTS: number;
   
   constructor(
-    indexEndpoint: string = process.env.RAG_API_ENDPOINT || 'https://yuyama-rag-chatbot-api-cus.azurewebsites.net/reindex-from-blob'
+    indexEndpoint: string = process.env.RAG_API_ENDPOINT || 'https://yuyama-rag-chatbot-api.azurewebsites.net/reindex-from-blob'
   ) {
     // Azure Storage接続設定
     const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
@@ -95,10 +95,7 @@ export class MhtmlBlobIndexer {
         });
         formData.append('index_type', indexType);
         formData.append('blob_url', blobUrl);
-        
-        if (sourceUrl) {
-          formData.append('source_url', sourceUrl);
-        }
+        formData.append('source_url', sourceUrl || '');
 
         // デバッグ情報を表示（初回のみ）
         if (attempt === 1) {
@@ -248,8 +245,8 @@ export class MhtmlBlobIndexer {
     failed: number;
     results: IndexingResult[];
   }> {
-    const containerName = source === 'qast' ? 'qast-mhtml' : 'stock-mhtml';
-    const blobPrefix = source === 'qast' ? 'data/' : 'stock-mhtml/data/';
+    const containerName = source === 'qast' ? 'qast-mhtml-customer' : 'stock-mhtml-customer';
+    const blobPrefix = source === 'qast' ? '' : 'data/';
     
     const {
       concurrency = parseInt(process.env.CONCURRENCY || '3'),
@@ -309,7 +306,7 @@ export class MhtmlBlobIndexer {
         
         console.log(`\n📦 バッチ ${batchNumber}/${totalBatches}: ${batch.length}ファイル`);
         
-        const batchPromises = batch.map(async (blobName, index) => {
+        const batchPromises = batch.map(async (blobName) => {
           try {
             // API間隔のための待機時間は削除（blobダウンロード間隔は不要）
             
@@ -322,7 +319,7 @@ export class MhtmlBlobIndexer {
             
             // MHTMLファイルからContent-Location URLを抽出
             let sourceUrl = this.extractContentLocationUrl(fileBuffer);
-            
+
             // Content-Locationに"error"が含まれていた場合はスキップ
             if (sourceUrl === 'SKIP_DUE_TO_ERROR') {
               console.log(`⏭️  ${blobName}: Content-Locationにerrorが含まれているためスキップしました`);
@@ -333,13 +330,24 @@ export class MhtmlBlobIndexer {
                 error: 'Content-Locationにerrorが含まれているためスキップしました'
               };
             }
-            
+
             // Content-Locationが見つからない場合は、ファイル名から推測（フォールバック）
             if (!sourceUrl) {
               console.log('📎 ファイル名からURLを推測します...');
               sourceUrl = this.extractSourceUrl(source, blobName);
             }
-            
+
+            // source_urlが取得できない場合はエラー
+            if (!sourceUrl) {
+              console.log(`❌ ${blobName}: source_urlが取得できませんでした`);
+              return {
+                success: false,
+                blobName,
+                source,
+                error: 'source_urlが取得できませんでした'
+              };
+            }
+
             // インデックス送信
             return await this.indexMhtmlFile(containerName, blobName, fileBuffer, source, sourceUrl);
           } catch (error) {
@@ -530,7 +538,7 @@ export class MhtmlBlobIndexer {
    * Blob名からAzure Blob StorageのURLを生成
    */
   private generateBlobUrl(containerName: string, blobName: string): string {
-    const storageAccount = process.env.AZURE_STORAGE_ACCOUNT_NAME || 'yuyamablobstorage';
+    const storageAccount = process.env.AZURE_STORAGE_ACCOUNT_NAME || 'yuyamaragchatbotstorage';
     return `https://${storageAccount}.blob.core.windows.net/${containerName}/${blobName}`;
   }
 }
